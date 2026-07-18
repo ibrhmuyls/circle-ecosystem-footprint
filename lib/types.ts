@@ -26,19 +26,22 @@ export type RawTokenTx = {
   value: string;
 };
 
-export type RawFacts = {
+export type MultiChainFacts = {
   address: Address;
+  chains: ChainFact[];
+  fetchedAt: number;
+};
+
+export type ChainFact = {
+  chainId: number;
+  chainName: string;
+  status: "analyzed" | "not_assessed" | "api_unavailable" | "rpc_failure";
+  reason: string;
   txs: RawTx[];
   tokenTxs: RawTokenTx[];
-  explorerLegacy: SourceResult<{ txs: RawTx[]; tokenTxs: RawTokenTx[] }>;
-  explorerV2: SourceResult<unknown>;
-  rpc: SourceResult<unknown>;
-  sources: {
-    explorerLegacy: SourceResult<unknown>;
-    explorerV2: SourceResult<unknown>;
-    rpc: SourceResult<unknown>;
-  };
-  fetchedAt: number;
+  apiUsed: string | null;
+  latencyMs: number | null;
+  fetchedAt: number | null;
 };
 
 export type ProductModule =

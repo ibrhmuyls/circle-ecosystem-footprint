@@ -1,21 +1,85 @@
 import Link from "next/link";
 import { normalizeAddress } from "@/lib/validation";
-import { collectFacts } from "@/lib/analysis/analystService";
-import { score } from "@/lib/analysis/scoring";
-import type { CircleFootprintReport } from "@/lib/types";
-import { ScoreBreakdown } from "@/components/ScoreBreakdown";
-import { WalletSummaryCard } from "@/components/WalletSummary";
-import { ArcProfileCard } from "@/components/ArcProfile";
-import { EvidenceCoverageCard } from "@/components/EvidenceCoverage";
+import { collectMultiChain } from "@/lib/collect";
+import { scoreWallet } from "@/lib/scoring/score";
+import type { FootprintReport } from "@/lib/scoring/types";
 import { ErrorState } from "@/components/ErrorState";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const dynamic = "force-dynamic";
 
-function fmtTime(ts: number | null): string {
-  if (!ts) return "—";
-  return new Date(ts * 1000).toLocaleString();
+function Bar({ score, max }: { score: number; max: number }) {
+  const pct = max === 0 ? 0 : Math.round((score / max) * 100);
+  return (
+    <div className="h-2 w-full overflow-hidden rounded bg-muted">
+      <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
+    </div>
+  );
+}
+
+function Section({ title, items, tone }: { title: string; items: string[]; tone: "good" | "bad" | "info" }) {
+  if (items.length === 0) return null;
+  const cls =
+    tone === "good" ? "border-l-4 border-green-500" : tone === "bad" ? "border-l-4 border-red-500" : "border-l-4 border-blue-500";
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm font-medium">{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ul className={`space-y-1 pl-3 text-sm ${cls}`}>
+          {items.map((it, i) => (
+            <li key={i} className="text-muted-foreground">{it}</li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
+function AnalysisDetails({ report }: { report: FootprintReport }) {
+  const analyzed = report.chainStatus.filter((c) => c.status === "analyzed").length;
+  const skipped = report.chainStatus.filter((c) => c.status !== "analyzed");
+  return (
+    <details className="rounded-md border bg-muted/30 p-4 text-sm">
+      <summary className="cursor-pointer font-medium">Analysis details</summary>
+      <div className="mt-3 space-y-3">
+        <div>
+          <p className="mb-1 font-medium text-foreground">Chains analyzed ({analyzed}/{report.chainStatus.length})</p>
+          <ul className="space-y-1 pl-4">
+            {report.chainStatus.filter((c) => c.status === "analyzed").map((c) => (
+              <li key={c.chainId} className="text-muted-foreground">
+                {c.chainName}: {c.txCount} tx, {c.tokenTxCount} token tx — {c.apiUsed} ({c.freshnessNote ?? "ok"})
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div>
+          <p className="mb-1 font-medium text-foreground">Chains skipped / unavailable ({skipped.length})</p>
+          <ul className="space-y-1 pl-4">
+            {skipped.map((c) => (
+              <li key={c.chainId} className="text-muted-foreground">
+                {c.chainName}: {c.freshnessNote ?? c.reason} {c.status === "rpc_failure" ? `(RPC failure: ${c.reason})` : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div>
+          <p className="mb-1 font-medium text-foreground">APIs used</p>
+          <p className="text-muted-foreground">
+            {Array.from(new Set(report.chainStatus.map((c) => c.apiUsed).filter(Boolean))).join(", ") || "none"}
+          </p>
+        </div>
+        <div>
+          <p className="mb-1 font-medium text-foreground">Data freshness</p>
+          <p className="text-muted-foreground">
+            Generated {new Date(report.generatedAt).toLocaleString()} · Registry v{report.registryVersion}
+          </p>
+        </div>
+      </div>
+    </details>
+  );
 }
 
 export default async function AnalyzePage({ searchParams }: { searchParams: Promise<{ address?: string }> }) {
@@ -27,18 +91,14 @@ export default async function AnalyzePage({ searchParams }: { searchParams: Prom
       <div className="mx-auto max-w-2xl px-4 py-24">
         <Card>
           <CardHeader>
-            <CardTitle>ARC Financial Readiness</CardTitle>
+            <CardTitle>Circle Ecosystem Footprint</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground">
-              Independent read-only analysis. Not eligibility, rewards, compliance, or an official Circle / Arc qualification.
+              Independent, read-only analysis of publicly observable activity across Arc and verifiable Circle infrastructure.
             </p>
             <form method="get" className="mt-4 flex gap-2">
-              <input
-                name="address"
-                placeholder="Paste an EVM address"
-                className="flex-1 rounded-md border bg-background px-3 py-2 text-sm"
-              />
+              <input name="address" placeholder="Paste an EVM address" className="flex-1 rounded-md border bg-background px-3 py-2 text-sm" />
               <Button type="submit">Analyze</Button>
             </form>
           </CardContent>
@@ -54,100 +114,109 @@ export default async function AnalyzePage({ searchParams }: { searchParams: Prom
     return <ErrorState message="Invalid address format." onRetry={() => {}} />;
   }
 
-  let report: CircleFootprintReport | null = null;
+  let report: FootprintReport | null = null;
   try {
-    const facts = await collectFacts(address);
-    report = score(facts);
+    const facts = await collectMultiChain(address);
+    report = scoreWallet(facts);
   } catch {
     return <ErrorState message="Analysis failed. Sources may be unavailable." onRetry={() => {}} />;
   }
 
-  if (!report) {
-    return <ErrorState message="Unable to analyze this address." onRetry={() => {}} />;
-  }
+  if (!report) return <ErrorState message="Unable to analyze this address." onRetry={() => {}} />;
+
+  const sybil = report.sybilSignals.filter((s) => s.detected);
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-xl font-semibold">ARC Financial Readiness</h1>
+          <h1 className="text-xl font-semibold">Circle Ecosystem Footprint</h1>
           <p className="mt-1 break-all font-mono text-sm text-muted-foreground">{report.address}</p>
-          <p className="mt-1 text-xs text-muted-foreground">Last updated: {new Date(report.lastUpdated).toLocaleString()}</p>
         </div>
         <div className="text-left sm:text-right">
-          <div className="text-3xl font-bold">{report.scoreValue}/100</div>
-          <div className="text-xs text-muted-foreground">{report.scoreLabel}</div>
+          <div className="text-3xl font-bold">{report.totalScore}/100</div>
+          <div className="text-xs text-muted-foreground">Composite footprint score</div>
         </div>
       </div>
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">{report.confidenceLabel}</CardTitle>
-          </CardHeader>
+          <CardHeader><CardTitle className="text-sm font-medium">Confidence</CardTitle></CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{report.confidenceValue}/100</div>
-            <p className="text-xs text-muted-foreground">{report.confidenceLevel} confidence based on available evidence.</p>
+            <div className={`text-2xl font-bold ${report.confidence === "Low" ? "text-red-500" : report.confidence === "Moderate" ? "text-yellow-500" : "text-green-500"}`}>{report.confidence}</div>
+            <p className="text-xs text-muted-foreground">{report.facts.networksUsed}/{report.facts.totalNetworksSupported} networks analyzed</p>
           </CardContent>
         </Card>
         <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Confidence Level</CardTitle>
-          </CardHeader>
+          <CardHeader><CardTitle className="text-sm font-medium">Networks Used</CardTitle></CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{report.confidenceLevel}</div>
-            <p className="text-xs text-muted-foreground">Based on transaction volume, time span, and source availability.</p>
+            <div className="text-2xl font-bold">{report.facts.networksUsed}</div>
+            <p className="text-xs text-muted-foreground">of {report.facts.totalNetworksSupported} supported</p>
           </CardContent>
         </Card>
         <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Profile</CardTitle>
-          </CardHeader>
+          <CardHeader><CardTitle className="text-sm font-medium">USDC Transfers</CardTitle></CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{report.primaryProfile}</div>
-            <p className="text-xs text-muted-foreground">Evidence-aware classification. Not a reward or rank.</p>
+            <div className="text-2xl font-bold">{report.facts.usdcTransfers}</div>
+            <p className="text-xs text-muted-foreground">~{report.facts.usdcVolumeUsd} units (log-scaled)</p>
           </CardContent>
         </Card>
       </div>
 
-      <div className="mb-6">
-        <ArcProfileCard profile={report.primaryProfile} />
+      {/* 1. Summary */}
+      <Card className="mb-6">
+        <CardHeader><CardTitle>Summary</CardTitle></CardHeader>
+        <CardContent><p className="text-sm text-muted-foreground">{report.summary}</p></CardContent>
+      </Card>
+
+      {/* Sybil warning */}
+      {report.sybilFlagged && (
+        <div className="mb-6 rounded-md border border-red-500 bg-red-500/10 p-4 text-sm text-red-500">
+          Sybil / spam patterns detected. Total score capped at 35. Signals: {sybil.map((s) => s.label).join(", ")}.
+        </div>
+      )}
+
+      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+        <Section title="Strengths" items={report.strengths} tone="good" />
+        <Section title="Weaknesses" items={report.weaknesses} tone="bad" />
+        <Section title="Improvement opportunities" items={report.improvements} tone="info" />
       </div>
 
-      <div className="mb-6">
-        <ScoreBreakdown categories={report.categories} />
-      </div>
+      {/* 5. Detailed scoring */}
+      <Card className="mb-6">
+        <CardHeader><CardTitle>Detailed scoring</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          {report.components.map((c) => (
+            <div key={c.id}>
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-medium">{c.label}</span>
+                <span className="font-mono text-muted-foreground">
+                  {c.status === "not_assessed" || c.status === "insufficient_data" ? "Data unavailable" : `${c.score}/${c.maxScore}`}
+                </span>
+              </div>
+              <Bar score={c.score} max={c.maxScore} />
+              <p className="mt-1 text-xs text-muted-foreground">{c.detail}</p>
+            </div>
+          ))}
+          <div className="mt-3 flex items-center justify-between border-t pt-3 text-sm font-semibold">
+            <span>TOTAL</span>
+            <span className="font-mono">{report.totalScore}/100</span>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="mb-6">
-        <WalletSummaryCard summary={report.summary} />
+        <AnalysisDetails report={report} />
       </div>
 
       <div className="mb-6 rounded-md border bg-muted/40 p-4 text-xs text-muted-foreground">
         <p className="mb-1 font-medium text-foreground">Disclaimer</p>
         <p>
-          ARC Financial Readiness evaluates only publicly observable, verifiable on-chain interactions related to Circle's programmable money
-          infrastructure and the Arc ecosystem. It does not infer identity, intent, eligibility, compliance status, reputation, financial
-          standing, or future behavior. This is an independent analysis tool. It does not determine airdrop eligibility, rewards, allowlists,
-          account status, compliance status, or any official Circle / Arc qualification. Results are based only on publicly observable onchain evidence.
+          This is an independent analytics tool. It does not determine airdrop eligibility, rewards, allowlists, account status,
+          compliance status, identity, affiliation, wealth, or any official Circle / Arc qualification. It analyzes only publicly
+          observable on-chain evidence associated with the supplied address. Observed on-chain activity is not proof of identity,
+          intent, eligibility, compliance, or wealth.
         </p>
-      </div>
-
-      <div className="mb-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Limitations</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-              {report.limitations.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-            <div className="mt-3 text-xs text-muted-foreground">
-              <Link className="underline" href="/methodology">Methodology and registry sources</Link>
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       <form method="get" className="mt-8">
