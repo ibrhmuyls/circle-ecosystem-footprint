@@ -54,7 +54,13 @@ export type ConfidenceLevel = "Low" | "Moderate" | "High";
 
 export type FootprintReport = {
   address: string;
-  /** Total score, 0..100, computed as Σscore/Σmax. */
+  /**
+   * Composite score, 0..100, computed ONLY over components whose data was
+   * actually available (status "scored" or "insufficient_data"). Components
+   * marked "not_assessed" are EXCLUDED from the denominator — missing data
+   * never silently penalizes the wallet. This number is a PARTIAL ESTIMATE
+   * whenever coverage < 100% and must not be read as a reputation score.
+   */
   totalScore: number;
   /** Breakdown of every component with score/max. */
   components: ScoreComponent[];
@@ -63,20 +69,31 @@ export type FootprintReport = {
   /** Global Sybil flag — when true, total is capped and labelled. */
   sybilFlagged: boolean;
   confidence: ConfidenceLevel;
+  /**
+   * True when not all supported networks were analyzed. The totalScore is
+   * then explicitly a partial estimate, not a complete assessment.
+   */
+  partialEstimate: boolean;
+  /** Fraction of supported networks actually analyzed (0..1). */
+  coverageFraction: number;
+  /** Number of components that could be measured (excludes not_assessed). */
+  measurableComponents: number;
+  /** Number of components that could NOT be measured (not_assessed). */
+  unavailableComponents: number;
   /** Per-network analysis status (multi-chain transparency). */
   chainStatus: ChainAnalysisStatus[];
   /** Aggregate facts used (for the UI summary). */
   facts: {
     networksUsed: number;
     totalNetworksSupported: number;
-    usdcTransfers: number;
-    usdcVolumeUsd: number;
+    analyzedChains: number;
+    usdcTransfersObserved: number;
+    usdcVolumeUsdObserved: number;
     activeMonths: number;
     walletAgeMonths: number;
-    cctpEvents: number;
+    cctpEventsVerified: number;
     protocolsInteracted: number;
     uniqueContracts: number;
-    holdingScoreAvailable: boolean;
   };
   /** User-facing narrative blocks. */
   summary: string;

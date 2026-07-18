@@ -23,9 +23,9 @@ describe("Scoring redesign — validation scenarios", () => {
 
   it("Long-term holder has strong Holding Behavior and Active Months", () => {
     const r = scoreWallet(longTermHolder());
-    const holding = r.components.find((c) => c.id === "holding-behavior")!;
+    const flow = r.components.find((c) => c.id === "usdc-flow-behavior")!;
     const months = r.components.find((c) => c.id === "active-months")!;
-    expect(holding.score).toBeGreaterThan(0);
+    expect(flow.score).toBeGreaterThan(0);
     expect(months.score).toBeGreaterThan(3); // ~11 months
   });
 
