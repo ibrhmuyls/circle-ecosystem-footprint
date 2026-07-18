@@ -41,33 +41,37 @@ export default function MethodologyPage() {
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-muted-foreground">
           <p>
-            The composite score is <code>Σ(score) / Σ(max) × 100</code>. No component fills from simply owning or
-            transferring USDC. Volume uses logarithmic scaling so large holders do not automatically reach the maximum.
+            The composite score is <code>Σ(score) / Σ(max)</code> computed <strong>only over components whose data
+            was actually available</strong>. Components whose network(s) could not be analyzed are marked{" "}
+            <em>Not assessed</em> and excluded from the denominator — missing data never silently penalizes the wallet.
           </p>
           <ul className="list-disc pl-5">
-            <li>Network Coverage (10) — how many Circle-supported chains show verified activity</li>
+            <li>Network Coverage (10) — chains with verified activity (of those analyzed)</li>
             <li>USDC Activity Volume (12) — log-scaled, whale-resistant</li>
             <li>Active Months (10) — distinct months with activity</li>
             <li>Wallet Age (6) — first-to-last activity span</li>
-            <li>Holding Behavior (10) — net position + multi-month persistence, not raw transfers</li>
-            <li>Protocol Diversity (10) — distinct contracts/protocols interacted with</li>
+            <li>USDC Flow Behavior (10) — net inbound/outbound flow, explicitly a transfer-flow signal (not a balance/holding claim)</li>
+            <li>Protocol Diversity (10) — distinct contracts/protocols</li>
             <li>Contract Interaction Diversity (8)</li>
-            <li>CCTP Usage (8) — verified bridge message events</li>
+            <li>CCTP Usage (8) — <strong>Not assessed</strong> until an official Circle bridge-contract registry is wired; no address is guessed</li>
             <li>Cross-chain Activity (6)</li>
             <li>Transaction Quality (6) — success ratio</li>
             <li>Recent Activity (4) — last 90 days</li>
-            <li>Consistency (6) — low month-to-month variance</li>
-            <li>Sybil Resistance (8) — penalizes burst / repetitive / wash patterns</li>
-            <li>Evidence Confidence (6) — share of supported chains actually analyzed</li>
+            <li>Consistency (6) — month-to-month variance</li>
+            <li>Sybil Resistance (8) — burst / repetitive / wash / concentration</li>
+            <li>Evidence Confidence (6) — share of supported chains analyzed</li>
           </ul>
           <p>
-            <strong>Sybil resistance:</strong> wallets showing burst transactions (≥30/min), repetitive identical
-            transfers (≥50%), wash round-trips (≥2), or single-counterparty concentration (≥90%) are flagged and the
-            total score is capped at 35/100.
+            <strong>Partial estimate:</strong> when fewer than all supported networks are analyzed, the score is labelled a
+            partial estimate and is explicitly <em>not</em> a reputation or trust score.
           </p>
           <p>
-            <strong>Data unavailable:</strong> when a supported chain cannot be analyzed (e.g. missing API key), it is
-            reported as &quot;Data unavailable&quot; and reduces Evidence Confidence — never invented as zero activity.
+            <strong>Confidence calibration:</strong> High requires ≥80% network coverage; Moderate requires ≥40%; otherwise Low.
+            One chain of ten therefore yields Low confidence.
+          </p>
+          <p>
+            <strong>Sybil resistance:</strong> burst (≥30/min), repetitive identical transfers (≥50%), wash round-trips (≥2), or
+            single-counterparty concentration (≥90%) flag the wallet and cap the total at 35/100.
           </p>
         </CardContent>
       </Card>

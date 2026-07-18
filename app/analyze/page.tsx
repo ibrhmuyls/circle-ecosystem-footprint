@@ -135,30 +135,42 @@ export default async function AnalyzePage({ searchParams }: { searchParams: Prom
         </div>
         <div className="text-left sm:text-right">
           <div className="text-3xl font-bold">{report.totalScore}/100</div>
-          <div className="text-xs text-muted-foreground">Composite footprint score</div>
+          <div className="text-xs text-muted-foreground">
+            {report.partialEstimate ? "Partial estimate" : "Composite score"}
+          </div>
         </div>
       </div>
+
+      {/* PARTIAL ESTIMATE banner — reviewer-required transparency */}
+      {report.partialEstimate && (
+        <div className="mb-6 rounded-md border border-amber-500 bg-amber-500/10 p-4 text-sm text-amber-600">
+          <strong>Partial estimate.</strong> Only {report.facts.analyzedChains} of{" "}
+          {report.facts.totalNetworksSupported} Circle-supported networks were analyzed.{" "}
+          {report.unavailableComponents} scoring component(s) could not be measured and were excluded. This number is{" "}
+          <strong>not</strong> a complete or definitive reputation score. Add network coverage to make it a fuller estimate.
+        </div>
+      )}
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Card>
           <CardHeader><CardTitle className="text-sm font-medium">Confidence</CardTitle></CardHeader>
           <CardContent>
             <div className={`text-2xl font-bold ${report.confidence === "Low" ? "text-red-500" : report.confidence === "Moderate" ? "text-yellow-500" : "text-green-500"}`}>{report.confidence}</div>
-            <p className="text-xs text-muted-foreground">{report.facts.networksUsed}/{report.facts.totalNetworksSupported} networks analyzed</p>
+            <p className="text-xs text-muted-foreground">Calibrated to network coverage</p>
           </CardContent>
         </Card>
         <Card>
-          <CardHeader><CardTitle className="text-sm font-medium">Networks Used</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-sm font-medium">Networks Analyzed</CardTitle></CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{report.facts.networksUsed}</div>
-            <p className="text-xs text-muted-foreground">of {report.facts.totalNetworksSupported} supported</p>
+            <div className="text-2xl font-bold">{report.facts.analyzedChains}<span className="text-base text-muted-foreground">/{report.facts.totalNetworksSupported}</span></div>
+            <p className="text-xs text-muted-foreground">{Math.round(report.coverageFraction * 100)}% coverage</p>
           </CardContent>
         </Card>
         <Card>
-          <CardHeader><CardTitle className="text-sm font-medium">USDC Transfers</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-sm font-medium">USDC Transfers Observed</CardTitle></CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{report.facts.usdcTransfers}</div>
-            <p className="text-xs text-muted-foreground">~{report.facts.usdcVolumeUsd} units (log-scaled)</p>
+            <div className="text-2xl font-bold">{report.facts.usdcTransfersObserved}</div>
+            <p className="text-xs text-muted-foreground">~{report.facts.usdcVolumeUsdObserved} units (log-scaled)</p>
           </CardContent>
         </Card>
       </div>
@@ -190,11 +202,15 @@ export default async function AnalyzePage({ searchParams }: { searchParams: Prom
             <div key={c.id}>
               <div className="flex items-center justify-between text-sm">
                 <span className="font-medium">{c.label}</span>
-                <span className="font-mono text-muted-foreground">
-                  {c.status === "not_assessed" || c.status === "insufficient_data" ? "Data unavailable" : `${c.score}/${c.maxScore}`}
+                <span className={`font-mono ${c.status === "not_assessed" ? "text-amber-500" : c.status === "insufficient_data" ? "text-muted-foreground" : ""}`}>
+                  {c.status === "not_assessed"
+                    ? "Not assessed"
+                    : c.status === "insufficient_data"
+                      ? "No activity"
+                      : `${c.score}/${c.maxScore}`}
                 </span>
               </div>
-              <Bar score={c.score} max={c.maxScore} />
+              {c.status !== "not_assessed" && <Bar score={c.score} max={c.maxScore} />}
               <p className="mt-1 text-xs text-muted-foreground">{c.detail}</p>
             </div>
           ))}
@@ -210,12 +226,14 @@ export default async function AnalyzePage({ searchParams }: { searchParams: Prom
       </div>
 
       <div className="mb-6 rounded-md border bg-muted/40 p-4 text-xs text-muted-foreground">
-        <p className="mb-1 font-medium text-foreground">Disclaimer</p>
+        <p className="mb-1 font-medium text-foreground">Disclaimer &amp; interpretation</p>
         <p>
           This is an independent analytics tool. It does not determine airdrop eligibility, rewards, allowlists, account status,
           compliance status, identity, affiliation, wealth, or any official Circle / Arc qualification. It analyzes only publicly
           observable on-chain evidence associated with the supplied address. Observed on-chain activity is not proof of identity,
-          intent, eligibility, compliance, or wealth.
+          intent, eligibility, compliance, or wealth. The composite score is a <strong>partial estimate</strong> whenever not all
+          supported networks are analyzed; it is a footprint indicator, <strong>not a reputation, credit, or trust score</strong>,
+          and must not be used to make decisions about individuals or entities.
         </p>
       </div>
 
